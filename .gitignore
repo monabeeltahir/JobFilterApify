@@ -11,6 +11,7 @@ build/
 # Application generated files
 job_filter_config.json
 job_applications.json
+resume_data.json
 filtered_jobs_*.json
 
 # IDE

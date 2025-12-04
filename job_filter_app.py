@@ -13,6 +13,14 @@ from difflib import SequenceMatcher
 import re
 import webbrowser
 
+# Try importing resume parser
+try:
+    from resume_parser import ResumeParser
+    RESUME_PARSER_AVAILABLE = True
+except ImportError:
+    RESUME_PARSER_AVAILABLE = False
+    print("Resume parser not available. Some features will be disabled.")
+
 
 class JobFilterApp:
     def __init__(self, root):
@@ -23,10 +31,13 @@ class JobFilterApp:
         # Configuration file to store job functions
         self.config_file = "job_filter_config.json"
         self.applications_file = "job_applications.json"
+        self.resume_data_file = "resume_data.json"
         self.jobs_data = []
         self.filtered_jobs = []
         self.job_functions_history = self.load_job_functions()
         self.applications_data = self.load_applications()
+        self.resume_data = self.load_resume_data()
+        self.resume_parser = ResumeParser() if RESUME_PARSER_AVAILABLE else None
         self.sort_column = '_similarity_score'
         self.sort_reverse = True
         self.application_filter = "all"  # all, applied, not_applied
@@ -79,6 +90,29 @@ class JobFilterApp:
     def get_application_info(self, job_id):
         """Get application information for a job"""
         return self.applications_data.get(str(job_id), {})
+
+    def load_resume_data(self):
+        """Load resume data from file"""
+        if os.path.exists(self.resume_data_file):
+            try:
+                with open(self.resume_data_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Error loading resume data: {e}")
+                return {}
+        return {}
+
+    def save_resume_data(self):
+        """Save resume data to file"""
+        try:
+            with open(self.resume_data_file, 'w') as f:
+                json.dump(self.resume_data, f, indent=2)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save resume data: {e}")
+
+    def has_resume(self):
+        """Check if resume has been parsed"""
+        return bool(self.resume_data and self.resume_data.get('skills'))
 
     def setup_ui(self):
         """Setup the user interface"""
@@ -215,6 +249,8 @@ class JobFilterApp:
         buttons_frame = ttk.Frame(main_frame)
         buttons_frame.grid(row=8, column=0, columnspan=3, pady=10)
 
+        ttk.Button(buttons_frame, text="📄 Upload Resume",
+                  command=self.upload_resume).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Mark as Applied",
                   command=self.mark_as_applied, style="Accent.TButton").pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Export Filtered Jobs",
@@ -352,14 +388,29 @@ class JobFilterApp:
 
         keyword_score = keyword_matches / max(len(keywords), 1) if keywords else 0
 
+        # Resume-based matching (if resume is uploaded)
+        resume_boost = 0.0
+        if self.has_resume() and self.resume_parser:
+            try:
+                # Calculate match score using resume parser
+                match_score = self.resume_parser.calculate_job_match_score(
+                    description, title
+                )
+                resume_boost = match_score * 0.3  # 30% boost for resume matching
+            except Exception as e:
+                print(f"Resume matching error: {e}")
+
         # Weighted average of similarities
-        max_similarity = max(
+        base_similarity = max(
             title_similarity * 2.0,  # Title is most important
             desc_similarity * 0.5,    # Description secondary
             func_similarity * 1.5,    # Job function important
             industries_similarity * 1.0,  # Industries relevant
             keyword_score * 1.2       # Keyword matching important
         )
+
+        # Add resume boost
+        max_similarity = min(base_similarity + resume_boost, 1.0)
 
         return max_similarity >= threshold, max_similarity
 
@@ -547,6 +598,21 @@ class JobFilterApp:
         # Link
         link = job.get('link', 'N/A')
         details += f"🔗 LINK: {link}\n\n"
+
+        # Resume matching skills (if resume uploaded)
+        if self.has_resume() and self.resume_parser:
+            description = job.get('descriptionText', '')
+            matching_skills = self.resume_parser.get_matching_skills(description)
+            if matching_skills:
+                details += f"{'='*100}\n"
+                details += f"✅ YOUR MATCHING SKILLS ({len(matching_skills)}):\n"
+                details += f"{'='*100}\n"
+                details += f"These skills from your resume match this job:\n\n"
+                # Display in columns
+                for i in range(0, len(matching_skills), 3):
+                    skills_row = matching_skills[i:i+3]
+                    details += "   • " + "   • ".join(f"{skill}" for skill in skills_row) + "\n"
+                details += "\n"
 
         # Description
         desc = job.get('descriptionText', '')
@@ -844,6 +910,222 @@ class JobFilterApp:
                                    f"Exported {len(export_data)} jobs to {os.path.basename(filename)}")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to export: {e}")
+
+    def upload_resume(self):
+        """Upload and parse resume file"""
+        if not RESUME_PARSER_AVAILABLE:
+            messagebox.showerror("Error",
+                               "Resume parser not available!\n\n"
+                               "Please install required libraries:\n"
+                               "pip install PyPDF2 python-docx pdfplumber")
+            return
+
+        # Open file dialog
+        filename = filedialog.askopenfilename(
+            title="Select Resume File",
+            filetypes=[
+                ("All Supported", "*.pdf *.docx *.txt"),
+                ("PDF files", "*.pdf"),
+                ("Word files", "*.docx"),
+                ("Text files", "*.txt"),
+                ("All files", "*.*")
+            ]
+        )
+
+        if not filename:
+            return
+
+        try:
+            # Parse resume
+            parsed_data = self.resume_parser.parse_resume(filename)
+
+            # Store resume data
+            self.resume_data = parsed_data
+            self.save_resume_data()
+
+            # Display results in dialog
+            self.show_resume_results(parsed_data, os.path.basename(filename))
+
+            # Auto-suggest job function if available
+            if parsed_data.get('suggested_roles'):
+                top_role = parsed_data['suggested_roles'][0]
+                response = messagebox.askyesno(
+                    "Auto-fill Job Function",
+                    f"Would you like to use '{top_role}' as your job function?\n\n"
+                    f"This is the top suggested role based on your resume."
+                )
+                if response:
+                    self.job_function_var.set(top_role)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to parse resume:\n\n{str(e)}")
+
+    def show_resume_results(self, parsed_data, filename):
+        """Show parsed resume results in a dialog"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Resume Parsing Results")
+        dialog.geometry("700x600")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Title
+        ttk.Label(dialog, text=f"Resume: {filename}",
+                 font=('Helvetica', 14, 'bold')).pack(pady=10)
+
+        # Create notebook for tabs
+        notebook = ttk.Notebook(dialog)
+        notebook.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        # Summary tab
+        summary_frame = ttk.Frame(notebook)
+        notebook.add(summary_frame, text="Summary")
+
+        summary_text = scrolledtext.ScrolledText(summary_frame, wrap=tk.WORD,
+                                                 width=80, height=25)
+        summary_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        summary = f"{'='*80}\n"
+        summary += f"RESUME PARSING SUMMARY\n"
+        summary += f"{'='*80}\n\n"
+
+        # Skills
+        skills = parsed_data.get('skills', [])
+        summary += f"✅ SKILLS FOUND ({len(skills)}):\n"
+        if skills:
+            # Group skills by category for better readability
+            summary += "   " + ", ".join(sorted(skills)) + "\n\n"
+        else:
+            summary += "   No technical skills detected\n\n"
+
+        # Experience
+        exp_years = parsed_data.get('experience_years', 0)
+        summary += f"💼 ESTIMATED EXPERIENCE: {exp_years} years\n\n"
+
+        # Job Titles
+        job_titles = parsed_data.get('job_titles', [])
+        summary += f"📋 JOB TITLES FOUND ({len(job_titles)}):\n"
+        if job_titles:
+            for title in job_titles[:10]:  # Limit to 10
+                summary += f"   • {title}\n"
+        else:
+            summary += "   No job titles detected\n"
+        summary += "\n"
+
+        # Education
+        education = parsed_data.get('education', [])
+        summary += f"🎓 EDUCATION ({len(education)}):\n"
+        if education:
+            for edu in education[:5]:  # Limit to 5
+                summary += f"   • {edu}\n"
+        else:
+            summary += "   No education information detected\n"
+        summary += "\n"
+
+        # Suggested Roles
+        suggested = parsed_data.get('suggested_roles', [])
+        summary += f"🎯 SUGGESTED JOB ROLES ({len(suggested)}):\n"
+        if suggested:
+            for i, role in enumerate(suggested, 1):
+                summary += f"   {i}. {role}\n"
+        else:
+            summary += "   No role suggestions available\n"
+        summary += "\n"
+
+        # Stats
+        summary += f"{'='*80}\n"
+        summary += f"STATISTICS\n"
+        summary += f"{'='*80}\n"
+        summary += f"Word Count: {parsed_data.get('word_count', 0)}\n"
+        summary += f"Skills Count: {len(skills)}\n"
+        summary += f"Job Titles Found: {len(job_titles)}\n"
+        summary += f"Education Entries: {len(education)}\n"
+
+        summary_text.insert('1.0', summary)
+        summary_text.config(state='disabled')
+
+        # Skills detail tab
+        skills_frame = ttk.Frame(notebook)
+        notebook.add(skills_frame, text=f"Skills ({len(skills)})")
+
+        skills_text = scrolledtext.ScrolledText(skills_frame, wrap=tk.WORD,
+                                               width=80, height=25)
+        skills_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        if skills:
+            # Categorize skills
+            categorized = {
+                'Programming Languages': [],
+                'Web Technologies': [],
+                'Databases': [],
+                'Cloud & DevOps': [],
+                'Data Science & ML': [],
+                'Engineering': [],
+                'Business & Management': [],
+                'Other': []
+            }
+
+            # Simple categorization based on keywords
+            for skill in sorted(skills):
+                skill_lower = skill.lower()
+                if any(x in skill_lower for x in ['python', 'java', 'javascript', 'c++', 'c#', 'ruby', 'php', 'go', 'rust', 'kotlin', 'swift']):
+                    categorized['Programming Languages'].append(skill)
+                elif any(x in skill_lower for x in ['react', 'angular', 'vue', 'html', 'css', 'node', 'django', 'flask', 'spring']):
+                    categorized['Web Technologies'].append(skill)
+                elif any(x in skill_lower for x in ['sql', 'mysql', 'postgresql', 'mongodb', 'redis', 'oracle', 'database']):
+                    categorized['Databases'].append(skill)
+                elif any(x in skill_lower for x in ['aws', 'azure', 'gcp', 'docker', 'kubernetes', 'jenkins', 'devops', 'cloud']):
+                    categorized['Cloud & DevOps'].append(skill)
+                elif any(x in skill_lower for x in ['machine learning', 'tensorflow', 'pytorch', 'data science', 'nlp', 'ai', 'ml']):
+                    categorized['Data Science & ML'].append(skill)
+                elif any(x in skill_lower for x in ['engineering', 'autocad', 'solidworks', 'pcb', 'circuit', 'embedded']):
+                    categorized['Engineering'].append(skill)
+                elif any(x in skill_lower for x in ['project management', 'agile', 'scrum', 'business', 'excel', 'tableau']):
+                    categorized['Business & Management'].append(skill)
+                else:
+                    categorized['Other'].append(skill)
+
+            skills_detail = ""
+            for category, cat_skills in categorized.items():
+                if cat_skills:
+                    skills_detail += f"\n{category} ({len(cat_skills)}):\n"
+                    skills_detail += f"{'-'*60}\n"
+                    for skill in cat_skills:
+                        skills_detail += f"  ✓ {skill}\n"
+                    skills_detail += "\n"
+
+            skills_text.insert('1.0', skills_detail)
+        else:
+            skills_text.insert('1.0', "No technical skills detected in your resume.\n\n"
+                                     "Make sure your resume includes technical skills, tools, "
+                                     "programming languages, or domain-specific expertise.")
+
+        skills_text.config(state='disabled')
+
+        # Full text tab
+        text_frame = ttk.Frame(notebook)
+        notebook.add(text_frame, text="Full Text")
+
+        full_text_widget = scrolledtext.ScrolledText(text_frame, wrap=tk.WORD,
+                                                     width=80, height=25)
+        full_text_widget.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+        full_text_widget.insert('1.0', parsed_data.get('text', 'No text extracted'))
+        full_text_widget.config(state='disabled')
+
+        # Buttons
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+
+        def use_top_role():
+            if suggested:
+                self.job_function_var.set(suggested[0])
+                messagebox.showinfo("Success", f"Job function set to: {suggested[0]}")
+            else:
+                messagebox.showwarning("Warning", "No suggested roles available")
+
+        ttk.Button(button_frame, text="Use Top Suggested Role",
+                  command=use_top_role).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Close",
+                  command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def clear_results(self):
         """Clear the results display"""
