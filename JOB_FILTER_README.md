@@ -4,6 +4,7 @@ A simple GUI-based Python application that filters job listings from JSON files 
 
 ## Features
 
+### Core Features
 - **GUI Interface**: Easy-to-use graphical interface built with tkinter
 - **Flexible Job Matching**: Filters jobs based on similarity to job titles, descriptions, and requirements
 - **Multiple Role Support**: Recognizes that users can apply for multiple related roles (e.g., "Electrical Engineer" matches "Electrical Engineering", "Electronics Engineer", "Computer Engineering", etc.)
@@ -11,6 +12,14 @@ A simple GUI-based Python application that filters job listings from JSON files 
 - **Adjustable Threshold**: Control how strict or lenient the matching should be
 - **Export Functionality**: Save filtered results to new JSON files
 - **Quick Load**: Easy access to files in the scrappedjobs folder
+
+### Table View Features ✨ NEW
+- **Sortable Table**: Results displayed in a professional table with sortable columns
+- **Click to Sort**: Click any column header to sort by that field (similarity, title, company, location, etc.)
+- **Toggle Sort Order**: Click the same column again to reverse sort order
+- **Detailed View Panel**: Click any job to see full details in the panel below
+- **Quick Apply**: Double-click a job to open the application link in your browser
+- **Open Link Button**: Select a job and click "Open Job Link" to view the posting
 
 ## Installation
 
@@ -74,28 +83,48 @@ chmod +x job_filter_app.py
 
 5. **Filter Jobs**
    - Click "Filter Jobs" button
-   - Results will appear in the text area below
-   - Jobs are sorted by similarity score (highest first)
+   - Results will appear in a sortable table
+   - Jobs are initially sorted by similarity score (highest first)
 
-6. **View Results**
-   - Each job shows:
-     - Similarity score (how well it matches)
-     - Job title
-     - Company name
-     - Location
-     - Employment type
-     - Job function
-     - Link to apply
-     - Description preview
+6. **View Results in Table**
+   - The table displays columns:
+     - **Similarity**: Match percentage
+     - **Job Title**: Position name
+     - **Company**: Employer name
+     - **Location**: Job location
+     - **Type**: Employment type (Full-time, Part-time, etc.)
+     - **Function**: Job category
+     - **Level**: Seniority level
 
-7. **Export Results (Optional)**
-   - Click "Export Filtered Jobs" to save results
-   - Choose a location and filename
-   - Results are saved as a JSON file
+7. **Sort Results**
+   - **Click any column header** to sort by that column
+   - Click the same header again to reverse the sort order
+   - Examples:
+     - Click "Similarity" to sort by match percentage
+     - Click "Company" to see jobs alphabetically by company
+     - Click "Location" to group jobs by location
 
-8. **Use Previous Searches**
-   - Previously searched job functions appear in the dropdown
-   - Select one and click "Use Selected" to quickly reuse it
+8. **View Job Details**
+   - **Single-click** any row to see full details in the panel below
+   - Details include:
+     - Complete job description
+     - Salary information (if available)
+     - Job link
+     - All other job metadata
+
+9. **Open Job Links**
+   - **Double-click** any job row to open the application link in your browser
+   - OR select a job and click the "Open Job Link" button
+   - Your default browser will open the job posting
+
+10. **Export Results (Optional)**
+    - Click "Export Filtered Jobs" to save results
+    - Choose a location and filename
+    - Results are saved as a JSON file
+
+11. **Use Previous Searches**
+    - Previously searched job functions appear in the dropdown
+    - Select one and click "Use Selected" to quickly reuse it
 
 ## How the Filtering Works
 
@@ -150,11 +179,19 @@ Example:
 
 ## Tips for Best Results
 
+### Search Tips
 1. **Start with Broader Terms**: Try "Software" before "Senior React Developer"
 2. **Use Core Keywords**: "Electrical Engineer" works better than "EE looking for jobs"
 3. **Adjust Threshold**: If too few results, lower the threshold; if too many irrelevant results, raise it
 4. **Multiple Searches**: Remember you can search for multiple related terms and export each separately
 5. **Check Related Fields**: "Computer Engineering" and "Electrical Engineering" often overlap
+
+### Using the Table Interface
+1. **Sort by Similarity First**: Start with similarity sorting to see best matches
+2. **Group by Company**: Click "Company" column to see all jobs from the same employer
+3. **Filter by Location**: Sort by location to focus on specific geographic areas
+4. **Quick Preview**: Single-click to preview, double-click to apply
+5. **Multiple Sorts**: Try different sort orders to discover opportunities you might miss
 
 ## JSON File Format
 
@@ -217,6 +254,36 @@ This is a basic utility application for personal use.
 
 ---
 
-**Version**: 1.0
+## Version History
+
+### Version 2.0 - Enhanced Table Interface (Current)
+**Released**: December 2025
+
+**New Features**:
+- ✨ Sortable table view for job results
+- 📊 Click column headers to sort by any field
+- 🔍 Detailed job view panel
+- 🖱️ Double-click to open job links
+- 🎨 Improved UI layout and organization
+
+**Improvements**:
+- Better visualization of results
+- Easier navigation through jobs
+- Quick access to job details
+- Enhanced sorting capabilities
+
+### Version 1.0 - Initial Release
+**Released**: December 2025
+
+**Features**:
+- Basic job filtering by function/type
+- Fuzzy matching algorithm
+- Text-based results display
+- Export functionality
+- Job function history
+
+---
+
+**Current Version**: 2.0
 **Last Updated**: December 2025
 **Author**: Created for job search filtering and management
