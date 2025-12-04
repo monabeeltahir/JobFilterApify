@@ -22,11 +22,14 @@ class JobFilterApp:
 
         # Configuration file to store job functions
         self.config_file = "job_filter_config.json"
+        self.applications_file = "job_applications.json"
         self.jobs_data = []
         self.filtered_jobs = []
         self.job_functions_history = self.load_job_functions()
+        self.applications_data = self.load_applications()
         self.sort_column = '_similarity_score'
         self.sort_reverse = True
+        self.application_filter = "all"  # all, applied, not_applied
 
         self.setup_ui()
 
@@ -49,6 +52,33 @@ class JobFilterApp:
                 json.dump({'job_functions': self.job_functions_history}, f, indent=2)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save configuration: {e}")
+
+    def load_applications(self):
+        """Load application tracking data from file"""
+        if os.path.exists(self.applications_file):
+            try:
+                with open(self.applications_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Error loading applications: {e}")
+                return {}
+        return {}
+
+    def save_applications(self):
+        """Save application tracking data to file"""
+        try:
+            with open(self.applications_file, 'w') as f:
+                json.dump(self.applications_data, f, indent=2)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save applications: {e}")
+
+    def is_applied(self, job_id):
+        """Check if a job has been applied to"""
+        return str(job_id) in self.applications_data
+
+    def get_application_info(self, job_id):
+        """Get application information for a job"""
+        return self.applications_data.get(str(job_id), {})
 
     def setup_ui(self):
         """Setup the user interface"""
@@ -101,14 +131,32 @@ class JobFilterApp:
         threshold_label = ttk.Label(threshold_frame, textvariable=self.threshold_var, width=5)
         threshold_label.pack(side=tk.LEFT, padx=5)
 
+        # Application status filter
+        ttk.Label(main_frame, text="Show Jobs:").grid(row=5, column=0, sticky=tk.W, pady=5)
+        self.filter_var = tk.StringVar(value="all")
+        filter_combo = ttk.Combobox(main_frame, textvariable=self.filter_var,
+                                    values=["all", "applied", "not_applied"],
+                                    state="readonly", width=47)
+        filter_combo.grid(row=5, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        filter_combo.bind('<<ComboboxSelected>>', self.on_filter_changed)
+
+        # Map display values
+        self.filter_display = {
+            "all": "All Jobs",
+            "applied": "Applied Jobs Only",
+            "not_applied": "Not Applied Jobs Only"
+        }
+        filter_combo['values'] = list(self.filter_display.values())
+        filter_combo.set(self.filter_display["all"])
+
         # Results info
         self.results_info_var = tk.StringVar(value="No jobs loaded")
         ttk.Label(main_frame, textvariable=self.results_info_var,
-                 font=('Helvetica', 10, 'bold')).grid(row=5, column=0, columnspan=3, pady=5)
+                 font=('Helvetica', 10, 'bold')).grid(row=6, column=0, columnspan=3, pady=5)
 
         # Results display - Table view
         results_frame = ttk.LabelFrame(main_frame, text="Filtered Jobs", padding="5")
-        results_frame.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
+        results_frame.grid(row=7, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         results_frame.columnconfigure(0, weight=1)
         results_frame.rowconfigure(0, weight=3)
         results_frame.rowconfigure(1, weight=1)
@@ -120,11 +168,12 @@ class JobFilterApp:
         table_frame.rowconfigure(0, weight=1)
 
         # Define columns
-        columns = ('similarity', 'title', 'company', 'location', 'employment_type', 'job_function', 'seniority')
+        columns = ('applied', 'similarity', 'title', 'company', 'location', 'employment_type', 'job_function', 'seniority')
         self.tree = ttk.Treeview(table_frame, columns=columns, show='headings', selectmode='browse')
 
         # Define headings and column properties
         column_config = {
+            'applied': ('Applied', 80, True),
             'similarity': ('Similarity', 100, True),
             'title': ('Job Title', 250, True),
             'company': ('Company', 150, True),
@@ -164,8 +213,10 @@ class JobFilterApp:
 
         # Buttons frame
         buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.grid(row=7, column=0, columnspan=3, pady=10)
+        buttons_frame.grid(row=8, column=0, columnspan=3, pady=10)
 
+        ttk.Button(buttons_frame, text="Mark as Applied",
+                  command=self.mark_as_applied, style="Accent.TButton").pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Export Filtered Jobs",
                   command=self.export_results).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Open Job Link",
@@ -174,6 +225,8 @@ class JobFilterApp:
                   command=self.clear_results).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Load File from scrappedjobs",
                   command=self.quick_load_scrappedjobs).pack(side=tk.LEFT, padx=5)
+        ttk.Button(buttons_frame, text="View All Applications",
+                  command=self.view_all_applications).pack(side=tk.LEFT, padx=5)
 
     def browse_file(self):
         """Browse for JSON file"""
@@ -360,14 +413,39 @@ class JobFilterApp:
                                             "3. Trying different keywords")
             return
 
-        self.results_info_var.set(f"Found {len(self.filtered_jobs)} matching jobs (click to view details, double-click to open link)")
+        # Apply application status filter
+        displayed_jobs = []
+        for idx, job in enumerate(self.filtered_jobs):
+            job_id = job.get('id', '')
+            is_applied = self.is_applied(job_id)
+
+            # Filter based on application status
+            if self.application_filter == "applied" and not is_applied:
+                continue
+            elif self.application_filter == "not_applied" and is_applied:
+                continue
+
+            displayed_jobs.append((idx, job, is_applied))
+
+        total_count = len(self.filtered_jobs)
+        applied_count = sum(1 for _, job, _ in displayed_jobs if self.is_applied(job.get('id', '')))
+        self.results_info_var.set(f"Showing {len(displayed_jobs)} of {total_count} jobs | {applied_count} applied (click to view details, double-click to open link)")
 
         # Populate table
-        for idx, job in enumerate(self.filtered_jobs):
+        for idx, job, is_applied in displayed_jobs:
             similarity = job.get('_similarity_score', 0)
             similarity_str = f"{similarity:.1%}"
 
+            # Get application info
+            applied_status = "✓ Yes" if is_applied else "No"
+            if is_applied:
+                app_info = self.get_application_info(job.get('id', ''))
+                applied_date = app_info.get('applied_date', '')
+                if applied_date:
+                    applied_status = f"✓ {applied_date}"
+
             values = (
+                applied_status,
                 similarity_str,
                 job.get('title', 'N/A'),
                 job.get('companyName', 'N/A'),
@@ -377,7 +455,15 @@ class JobFilterApp:
                 job.get('seniorityLevel', 'N/A')
             )
 
-            self.tree.insert('', tk.END, values=values, tags=(str(idx),))
+            # Set tag for color coding
+            tags = [str(idx)]
+            if is_applied:
+                tags.append('applied')
+
+            self.tree.insert('', tk.END, values=values, tags=tuple(tags))
+
+        # Configure tag colors
+        self.tree.tag_configure('applied', background='#e8f5e9')
 
     def sort_by_column(self, col):
         """Sort table by column"""
@@ -386,6 +472,7 @@ class JobFilterApp:
 
         # Map display column names to job dictionary keys
         column_map = {
+            'applied': '_applied_status',
             'similarity': '_similarity_score',
             'title': 'title',
             'company': 'companyName',
@@ -394,6 +481,11 @@ class JobFilterApp:
             'job_function': 'jobFunction',
             'seniority': 'seniorityLevel'
         }
+
+        # Add applied status to jobs for sorting
+        if col == 'applied':
+            for job in self.filtered_jobs:
+                job['_applied_status'] = 1 if self.is_applied(job.get('id', '')) else 0
 
         sort_key = column_map.get(col, col)
 
@@ -505,6 +597,217 @@ class JobFilterApp:
                     messagebox.showerror("Error", f"Failed to open link: {e}")
             else:
                 messagebox.showwarning("Warning", "No link available for this job!")
+
+    def on_filter_changed(self, event):
+        """Handle application filter change"""
+        # Get the selected display value and map it back to the key
+        display_value = self.filter_var.get()
+        reverse_map = {v: k for k, v in self.filter_display.items()}
+        self.application_filter = reverse_map.get(display_value, "all")
+
+        # Refresh the display
+        self.display_results()
+
+    def mark_as_applied(self):
+        """Mark selected job as applied"""
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select a job first!")
+            return
+
+        item = selection[0]
+        tags = self.tree.item(item, 'tags')
+        if not tags:
+            return
+
+        idx = int(tags[0])
+        job = self.filtered_jobs[idx]
+        job_id = str(job.get('id', ''))
+
+        if not job_id:
+            messagebox.showerror("Error", "Job ID not found!")
+            return
+
+        # Check if already applied
+        if self.is_applied(job_id):
+            response = messagebox.askyesno("Already Applied",
+                                          "This job is already marked as applied. Do you want to update the information?")
+            if not response:
+                return
+
+        # Create dialog for application details
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Mark as Applied")
+        dialog.geometry("500x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Job info
+        ttk.Label(dialog, text=f"Job: {job.get('title', 'N/A')}", font=('Helvetica', 12, 'bold')).pack(pady=10)
+        ttk.Label(dialog, text=f"Company: {job.get('companyName', 'N/A')}").pack()
+
+        # Application date
+        date_frame = ttk.Frame(dialog)
+        date_frame.pack(pady=10, padx=20, fill=tk.X)
+        ttk.Label(date_frame, text="Application Date:").pack(side=tk.LEFT)
+        date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+        date_entry = ttk.Entry(date_frame, textvariable=date_var, width=15)
+        date_entry.pack(side=tk.LEFT, padx=5)
+
+        # Status
+        status_frame = ttk.Frame(dialog)
+        status_frame.pack(pady=10, padx=20, fill=tk.X)
+        ttk.Label(status_frame, text="Status:").pack(side=tk.LEFT)
+        status_var = tk.StringVar(value="Applied")
+        status_combo = ttk.Combobox(status_frame, textvariable=status_var,
+                                    values=["Applied", "Interview Scheduled", "Rejected", "Offer Received"],
+                                    state="readonly", width=20)
+        status_combo.pack(side=tk.LEFT, padx=5)
+
+        # Notes
+        ttk.Label(dialog, text="Notes:").pack(pady=(10, 5))
+        notes_text = scrolledtext.ScrolledText(dialog, wrap=tk.WORD, width=50, height=10)
+        notes_text.pack(pady=5, padx=20, fill=tk.BOTH, expand=True)
+
+        # Load existing data if updating
+        if self.is_applied(job_id):
+            app_info = self.get_application_info(job_id)
+            date_var.set(app_info.get('applied_date', date_var.get()))
+            status_var.set(app_info.get('status', 'Applied'))
+            notes_text.insert('1.0', app_info.get('notes', ''))
+
+        # Buttons
+        def save_application():
+            self.applications_data[job_id] = {
+                'job_title': job.get('title', ''),
+                'company': job.get('companyName', ''),
+                'applied_date': date_var.get(),
+                'status': status_var.get(),
+                'notes': notes_text.get('1.0', tk.END).strip(),
+                'job_link': job.get('link', ''),
+                'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            self.save_applications()
+            messagebox.showinfo("Success", "Job marked as applied!")
+            dialog.destroy()
+            self.display_results()
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+        ttk.Button(button_frame, text="Save", command=save_application).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def view_all_applications(self):
+        """View all applied jobs in a separate window"""
+        if not self.applications_data:
+            messagebox.showinfo("No Applications", "You haven't applied to any jobs yet!")
+            return
+
+        # Create window
+        app_window = tk.Toplevel(self.root)
+        app_window.title("Application Tracker")
+        app_window.geometry("1000x600")
+
+        # Title
+        ttk.Label(app_window, text="Application Tracker", font=('Helvetica', 16, 'bold')).pack(pady=10)
+
+        # Create frame for table
+        table_frame = ttk.Frame(app_window)
+        table_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        # Create Treeview
+        columns = ('date', 'title', 'company', 'status')
+        app_tree = ttk.Treeview(table_frame, columns=columns, show='headings', selectmode='browse')
+
+        # Define headings
+        app_tree.heading('date', text='Applied Date')
+        app_tree.heading('title', text='Job Title')
+        app_tree.heading('company', text='Company')
+        app_tree.heading('status', text='Status')
+
+        # Define column widths
+        app_tree.column('date', width=120)
+        app_tree.column('title', width=300)
+        app_tree.column('company', width=200)
+        app_tree.column('status', width=150)
+
+        # Add scrollbars
+        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=app_tree.yview)
+        hsb = ttk.Scrollbar(table_frame, orient="horizontal", command=app_tree.xview)
+        app_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        app_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        vsb.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        hsb.grid(row=1, column=0, sticky=(tk.W, tk.E))
+
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+
+        # Populate with applications
+        for job_id, app_info in sorted(self.applications_data.items(),
+                                      key=lambda x: x[1].get('applied_date', ''), reverse=True):
+            values = (
+                app_info.get('applied_date', 'N/A'),
+                app_info.get('job_title', 'N/A'),
+                app_info.get('company', 'N/A'),
+                app_info.get('status', 'Applied')
+            )
+            app_tree.insert('', tk.END, values=values, tags=(job_id,))
+
+        # Detail panel
+        detail_frame = ttk.LabelFrame(app_window, text="Application Details", padding="10")
+        detail_frame.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        detail_text = scrolledtext.ScrolledText(detail_frame, wrap=tk.WORD, height=10)
+        detail_text.pack(fill=tk.BOTH, expand=True)
+
+        def on_app_selected(event):
+            selection = app_tree.selection()
+            if not selection:
+                return
+
+            item = selection[0]
+            tags = app_tree.item(item, 'tags')
+            if tags:
+                job_id = tags[0]
+                app_info = self.applications_data.get(job_id, {})
+
+                details = f"Job Title: {app_info.get('job_title', 'N/A')}\n"
+                details += f"Company: {app_info.get('company', 'N/A')}\n"
+                details += f"Applied Date: {app_info.get('applied_date', 'N/A')}\n"
+                details += f"Status: {app_info.get('status', 'Applied')}\n"
+                details += f"Last Updated: {app_info.get('last_updated', 'N/A')}\n"
+                details += f"Link: {app_info.get('job_link', 'N/A')}\n\n"
+                details += f"Notes:\n{app_info.get('notes', 'No notes')}"
+
+                detail_text.delete('1.0', tk.END)
+                detail_text.insert('1.0', details)
+
+        app_tree.bind('<<TreeviewSelect>>', on_app_selected)
+
+        # Buttons
+        button_frame = ttk.Frame(app_window)
+        button_frame.pack(pady=10)
+
+        def open_selected_link():
+            selection = app_tree.selection()
+            if not selection:
+                messagebox.showwarning("Warning", "Please select an application!")
+                return
+
+            item = selection[0]
+            tags = app_tree.item(item, 'tags')
+            if tags:
+                job_id = tags[0]
+                app_info = self.applications_data.get(job_id, {})
+                link = app_info.get('job_link', '')
+                if link and link != 'N/A':
+                    webbrowser.open(link)
+                else:
+                    messagebox.showwarning("Warning", "No link available!")
+
+        ttk.Button(button_frame, text="Open Job Link", command=open_selected_link).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Close", command=app_window.destroy).pack(side=tk.LEFT, padx=5)
 
     def export_results(self):
         """Export filtered jobs to JSON file"""

@@ -13,13 +13,23 @@ A simple GUI-based Python application that filters job listings from JSON files 
 - **Export Functionality**: Save filtered results to new JSON files
 - **Quick Load**: Easy access to files in the scrappedjobs folder
 
-### Table View Features ✨ NEW
+### Table View Features
 - **Sortable Table**: Results displayed in a professional table with sortable columns
 - **Click to Sort**: Click any column header to sort by that field (similarity, title, company, location, etc.)
 - **Toggle Sort Order**: Click the same column again to reverse sort order
 - **Detailed View Panel**: Click any job to see full details in the panel below
 - **Quick Apply**: Double-click a job to open the application link in your browser
 - **Open Link Button**: Select a job and click "Open Job Link" to view the posting
+
+### Application Tracking Features ✨ NEW
+- **Mark as Applied**: Track which jobs you've applied to with a single click
+- **Application Status**: Track application status (Applied, Interview Scheduled, Rejected, Offer Received)
+- **Application Notes**: Add custom notes for each application
+- **Applied Column**: Visual indicator showing which jobs you've applied to
+- **Filter by Status**: Filter to show only applied or not-applied jobs
+- **Application Tracker**: Dedicated window to view all your applications in one place
+- **Color Coding**: Applied jobs are highlighted in green for easy identification
+- **Auto-save**: All application data is automatically saved and persists between sessions
 
 ## Installation
 
@@ -126,6 +136,36 @@ chmod +x job_filter_app.py
     - Previously searched job functions appear in the dropdown
     - Select one and click "Use Selected" to quickly reuse it
 
+### Application Tracking
+
+12. **Mark Jobs as Applied**
+    - Select a job from the table
+    - Click the "Mark as Applied" button
+    - A dialog will open where you can:
+      - Set the application date (defaults to today)
+      - Select application status (Applied, Interview Scheduled, Rejected, Offer Received)
+      - Add notes about the application
+    - Click "Save" to track the application
+
+13. **View Applied Jobs**
+    - Use the "Show Jobs" dropdown above the table
+    - Select "Applied Jobs Only" to see only jobs you've applied to
+    - Select "Not Applied Jobs Only" to see jobs you haven't applied to
+    - Applied jobs are highlighted in light green
+
+14. **View All Applications**
+    - Click the "View All Applications" button
+    - A dedicated Application Tracker window opens
+    - View all your applications sorted by date
+    - Click any application to see details including notes
+    - Open job links directly from the tracker
+
+15. **Update Application Status**
+    - Select an applied job from the table
+    - Click "Mark as Applied" again
+    - Update the status or add new notes
+    - Click "Save" to update
+
 ## How the Filtering Works
 
 The application uses multiple strategies to match jobs:
@@ -155,6 +195,7 @@ JobFilterApify/
 ├── requirements.txt            # Python dependencies (mostly built-in)
 ├── JOB_FILTER_README.md       # This file
 ├── job_filter_config.json     # Auto-generated: stores search history
+├── job_applications.json      # Auto-generated: stores application tracking data
 ├── scrappedjobs/              # Folder containing job JSON files
 │   └── dataset_linkedin-jobs-scraper_2025-12-03_21-25-37-181
 └── filtered_jobs_*.json       # Exported filtered results (optional)
@@ -177,6 +218,31 @@ Example:
 }
 ```
 
+## Application Tracking File
+
+The application automatically creates `job_applications.json` to store your application tracking data:
+- Application dates
+- Application status
+- Personal notes
+- Job details
+
+Example:
+```json
+{
+  "4341564356": {
+    "job_title": "Electrical Engineer, Lithium Refinery",
+    "company": "Tesla",
+    "applied_date": "2025-12-04",
+    "status": "Applied",
+    "notes": "Applied through company website. Highlighted battery experience.",
+    "job_link": "https://...",
+    "last_updated": "2025-12-04 10:30:00"
+  }
+}
+```
+
+**Important**: This file contains your personal application data and is automatically excluded from version control.
+
 ## Tips for Best Results
 
 ### Search Tips
@@ -192,6 +258,14 @@ Example:
 3. **Filter by Location**: Sort by location to focus on specific geographic areas
 4. **Quick Preview**: Single-click to preview, double-click to apply
 5. **Multiple Sorts**: Try different sort orders to discover opportunities you might miss
+
+### Application Tracking Tips
+1. **Mark Immediately**: Mark jobs as applied right after you submit to avoid duplicates
+2. **Add Detailed Notes**: Include info like resume version used, cover letter points, referrals
+3. **Update Status Regularly**: Keep status current to track your pipeline effectively
+4. **Use the Tracker**: Review "View All Applications" weekly to follow up on pending applications
+5. **Sort by Applied**: Click "Applied" column to see application dates at a glance
+6. **Filter Strategically**: Use "Not Applied" filter to focus on new opportunities
 
 ## JSON File Format
 
@@ -230,16 +304,17 @@ The application expects JSON files with this structure:
 
 ## Future Enhancements
 
-The current version is basic. Future versions could include:
+Future versions could include:
 
 - Advanced filtering (location, salary, experience level)
 - Machine learning-based job matching
 - Skills extraction and matching
 - Company preferences and blacklisting
-- Application tracking
 - Email notifications for new matching jobs
 - Resume parsing to auto-detect suitable roles
 - Integration with job boards APIs
+- Calendar integration for interview scheduling
+- Export applications to CSV/Excel
 
 ## Support
 
@@ -256,7 +331,28 @@ This is a basic utility application for personal use.
 
 ## Version History
 
-### Version 2.0 - Enhanced Table Interface (Current)
+### Version 3.0 - Application Tracking (Current)
+**Released**: December 2025
+
+**New Features**:
+- 📝 Mark jobs as applied with detailed tracking
+- 📊 Application status management (Applied, Interview, Rejected, Offer)
+- 📅 Track application dates automatically
+- 📌 Add custom notes for each application
+- ✅ Applied column with visual indicators
+- 🎯 Filter by application status (All/Applied/Not Applied)
+- 📋 Dedicated Application Tracker window
+- 🎨 Color-coded applied jobs (green highlighting)
+- 💾 Persistent storage of all application data
+
+**Improvements**:
+- Better job search workflow
+- Organized application management
+- Avoid duplicate applications
+- Track follow-up actions
+- Historical application data
+
+### Version 2.0 - Enhanced Table Interface
 **Released**: December 2025
 
 **New Features**:
@@ -284,6 +380,6 @@ This is a basic utility application for personal use.
 
 ---
 
-**Current Version**: 2.0
+**Current Version**: 3.0
 **Last Updated**: December 2025
 **Author**: Created for job search filtering and management
