@@ -1,0 +1,14 @@
+# Job Filter Application Requirements
+# Most dependencies are part of Python standard library
+
+# No external dependencies required
+# The application uses only Python built-in libraries:
+# - tkinter (GUI)
+# - json (JSON parsing)
+# - difflib (fuzzy string matching)
+# - re (regular expressions)
+# - os (file operations)
+# - datetime (timestamps)
+
+# Optional: For better display on some systems
+# tk>=0.1.0
