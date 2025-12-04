@@ -1,14 +1,18 @@
 # Job Filter Application Requirements
-# Most dependencies are part of Python standard library
 
-# No external dependencies required
-# The application uses only Python built-in libraries:
+# Core dependencies (Python built-in):
 # - tkinter (GUI)
 # - json (JSON parsing)
 # - difflib (fuzzy string matching)
 # - re (regular expressions)
 # - os (file operations)
 # - datetime (timestamps)
+# - webbrowser (open links)
+
+# Resume Parsing Dependencies (v4.0+)
+PyPDF2>=3.0.0              # PDF resume parsing
+python-docx>=0.8.11        # DOCX resume parsing
+pdfplumber>=0.10.0         # Enhanced PDF text extraction (fallback)
 
 # Optional: For better display on some systems
 # tk>=0.1.0
