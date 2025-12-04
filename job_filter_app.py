@@ -11,6 +11,7 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext
 from datetime import datetime
 from difflib import SequenceMatcher
 import re
+import webbrowser
 
 
 class JobFilterApp:
@@ -24,6 +25,8 @@ class JobFilterApp:
         self.jobs_data = []
         self.filtered_jobs = []
         self.job_functions_history = self.load_job_functions()
+        self.sort_column = '_similarity_score'
+        self.sort_reverse = True
 
         self.setup_ui()
 
@@ -103,15 +106,61 @@ class JobFilterApp:
         ttk.Label(main_frame, textvariable=self.results_info_var,
                  font=('Helvetica', 10, 'bold')).grid(row=5, column=0, columnspan=3, pady=5)
 
-        # Results display
+        # Results display - Table view
         results_frame = ttk.LabelFrame(main_frame, text="Filtered Jobs", padding="5")
         results_frame.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         results_frame.columnconfigure(0, weight=1)
-        results_frame.rowconfigure(0, weight=1)
+        results_frame.rowconfigure(0, weight=3)
+        results_frame.rowconfigure(1, weight=1)
 
-        self.results_text = scrolledtext.ScrolledText(results_frame, wrap=tk.WORD,
-                                                      width=100, height=25)
-        self.results_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Create Treeview with columns
+        table_frame = ttk.Frame(results_frame)
+        table_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        table_frame.columnconfigure(0, weight=1)
+        table_frame.rowconfigure(0, weight=1)
+
+        # Define columns
+        columns = ('similarity', 'title', 'company', 'location', 'employment_type', 'job_function', 'seniority')
+        self.tree = ttk.Treeview(table_frame, columns=columns, show='headings', selectmode='browse')
+
+        # Define headings and column properties
+        column_config = {
+            'similarity': ('Similarity', 100, True),
+            'title': ('Job Title', 250, True),
+            'company': ('Company', 150, True),
+            'location': ('Location', 150, True),
+            'employment_type': ('Type', 100, True),
+            'job_function': ('Function', 150, True),
+            'seniority': ('Level', 120, True)
+        }
+
+        for col, (heading, width, sortable) in column_config.items():
+            self.tree.heading(col, text=heading,
+                            command=lambda c=col: self.sort_by_column(c))
+            self.tree.column(col, width=width, minwidth=50)
+
+        # Add scrollbars
+        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        hsb = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        self.tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        vsb.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        hsb.grid(row=1, column=0, sticky=(tk.W, tk.E))
+
+        # Bind selection event
+        self.tree.bind('<<TreeviewSelect>>', self.on_job_selected)
+        self.tree.bind('<Double-1>', self.on_job_double_click)
+
+        # Detail view panel
+        detail_frame = ttk.LabelFrame(results_frame, text="Job Details", padding="5")
+        detail_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(5, 0))
+        detail_frame.columnconfigure(0, weight=1)
+        detail_frame.rowconfigure(0, weight=1)
+
+        self.detail_text = scrolledtext.ScrolledText(detail_frame, wrap=tk.WORD,
+                                                     width=100, height=10)
+        self.detail_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
         # Buttons frame
         buttons_frame = ttk.Frame(main_frame)
@@ -119,6 +168,8 @@ class JobFilterApp:
 
         ttk.Button(buttons_frame, text="Export Filtered Jobs",
                   command=self.export_results).pack(side=tk.LEFT, padx=5)
+        ttk.Button(buttons_frame, text="Open Job Link",
+                  command=self.open_selected_job_link).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Clear Results",
                   command=self.clear_results).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Load File from scrappedjobs",
@@ -294,41 +345,166 @@ class JobFilterApp:
         self.display_results()
 
     def display_results(self):
-        """Display filtered jobs in the text widget"""
-        self.results_text.delete('1.0', tk.END)
+        """Display filtered jobs in the table"""
+        # Clear existing items
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        self.detail_text.delete('1.0', tk.END)
 
         if not self.filtered_jobs:
             self.results_info_var.set("No matching jobs found!")
-            self.results_text.insert('1.0', "No jobs match your criteria. Try:\n"
+            self.detail_text.insert('1.0', "No jobs match your criteria. Try:\n"
                                             "1. Lowering the similarity threshold\n"
                                             "2. Using more general terms\n"
                                             "3. Trying different keywords")
             return
 
-        self.results_info_var.set(f"Found {len(self.filtered_jobs)} matching jobs")
+        self.results_info_var.set(f"Found {len(self.filtered_jobs)} matching jobs (click to view details, double-click to open link)")
 
-        for idx, job in enumerate(self.filtered_jobs, 1):
+        # Populate table
+        for idx, job in enumerate(self.filtered_jobs):
             similarity = job.get('_similarity_score', 0)
+            similarity_str = f"{similarity:.1%}"
 
-            result = f"\n{'='*100}\n"
-            result += f"Job #{idx} (Similarity: {similarity:.2%})\n"
-            result += f"{'='*100}\n"
-            result += f"Title: {job.get('title', 'N/A')}\n"
-            result += f"Company: {job.get('companyName', 'N/A')}\n"
-            result += f"Location: {job.get('location', 'N/A')}\n"
-            result += f"Employment Type: {job.get('employmentType', 'N/A')}\n"
-            result += f"Seniority Level: {job.get('seniorityLevel', 'N/A')}\n"
-            result += f"Job Function: {job.get('jobFunction', 'N/A')}\n"
-            result += f"Industries: {job.get('industries', 'N/A')}\n"
-            result += f"Link: {job.get('link', 'N/A')}\n"
+            values = (
+                similarity_str,
+                job.get('title', 'N/A'),
+                job.get('companyName', 'N/A'),
+                job.get('location', 'N/A'),
+                job.get('employmentType', 'N/A'),
+                job.get('jobFunction', 'N/A'),
+                job.get('seniorityLevel', 'N/A')
+            )
 
-            # Show snippet of description
-            desc = job.get('descriptionText', '')
-            if desc:
-                snippet = desc[:300] + "..." if len(desc) > 300 else desc
-                result += f"\nDescription Preview:\n{snippet}\n"
+            self.tree.insert('', tk.END, values=values, tags=(str(idx),))
 
-            self.results_text.insert(tk.END, result)
+    def sort_by_column(self, col):
+        """Sort table by column"""
+        if not self.filtered_jobs:
+            return
+
+        # Map display column names to job dictionary keys
+        column_map = {
+            'similarity': '_similarity_score',
+            'title': 'title',
+            'company': 'companyName',
+            'location': 'location',
+            'employment_type': 'employmentType',
+            'job_function': 'jobFunction',
+            'seniority': 'seniorityLevel'
+        }
+
+        sort_key = column_map.get(col, col)
+
+        # Toggle sort direction if clicking the same column
+        if self.sort_column == sort_key:
+            self.sort_reverse = not self.sort_reverse
+        else:
+            self.sort_column = sort_key
+            self.sort_reverse = True if col == 'similarity' else False
+
+        # Sort the filtered jobs
+        self.filtered_jobs.sort(
+            key=lambda x: x.get(sort_key, ''),
+            reverse=self.sort_reverse
+        )
+
+        # Refresh the display
+        self.display_results()
+
+    def on_job_selected(self, event):
+        """Handle job selection in table"""
+        selection = self.tree.selection()
+        if not selection:
+            return
+
+        # Get the index from tags
+        item = selection[0]
+        tags = self.tree.item(item, 'tags')
+        if tags:
+            idx = int(tags[0])
+            job = self.filtered_jobs[idx]
+            self.display_job_details(job)
+
+    def display_job_details(self, job):
+        """Display detailed information about selected job"""
+        self.detail_text.delete('1.0', tk.END)
+
+        similarity = job.get('_similarity_score', 0)
+
+        details = f"{'='*100}\n"
+        details += f"SIMILARITY SCORE: {similarity:.1%}\n"
+        details += f"{'='*100}\n\n"
+        details += f"📋 TITLE: {job.get('title', 'N/A')}\n\n"
+        details += f"🏢 COMPANY: {job.get('companyName', 'N/A')}\n"
+        details += f"📍 LOCATION: {job.get('location', 'N/A')}\n"
+        details += f"💼 EMPLOYMENT TYPE: {job.get('employmentType', 'N/A')}\n"
+        details += f"📊 SENIORITY LEVEL: {job.get('seniorityLevel', 'N/A')}\n"
+        details += f"⚙️  JOB FUNCTION: {job.get('jobFunction', 'N/A')}\n"
+        details += f"🏭 INDUSTRIES: {job.get('industries', 'N/A')}\n\n"
+
+        # Salary info
+        salary = job.get('salary', '') or job.get('salaryInfo', '')
+        if salary:
+            if isinstance(salary, list):
+                salary = ', '.join(filter(None, salary))
+            if salary:
+                details += f"💰 SALARY: {salary}\n\n"
+
+        # Link
+        link = job.get('link', 'N/A')
+        details += f"🔗 LINK: {link}\n\n"
+
+        # Description
+        desc = job.get('descriptionText', '')
+        if desc:
+            details += f"{'='*100}\n"
+            details += f"📄 DESCRIPTION:\n"
+            details += f"{'='*100}\n\n"
+            details += desc
+
+        self.detail_text.insert('1.0', details)
+
+    def on_job_double_click(self, event):
+        """Open job link in browser on double-click"""
+        selection = self.tree.selection()
+        if not selection:
+            return
+
+        item = selection[0]
+        tags = self.tree.item(item, 'tags')
+        if tags:
+            idx = int(tags[0])
+            job = self.filtered_jobs[idx]
+            link = job.get('link', '')
+            if link and link != 'N/A':
+                try:
+                    webbrowser.open(link)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to open link: {e}")
+
+    def open_selected_job_link(self):
+        """Open the selected job's link in browser"""
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select a job first!")
+            return
+
+        item = selection[0]
+        tags = self.tree.item(item, 'tags')
+        if tags:
+            idx = int(tags[0])
+            job = self.filtered_jobs[idx]
+            link = job.get('link', '')
+            if link and link != 'N/A':
+                try:
+                    webbrowser.open(link)
+                    messagebox.showinfo("Success", "Job link opened in browser!")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to open link: {e}")
+            else:
+                messagebox.showwarning("Warning", "No link available for this job!")
 
     def export_results(self):
         """Export filtered jobs to JSON file"""
@@ -368,7 +544,9 @@ class JobFilterApp:
 
     def clear_results(self):
         """Clear the results display"""
-        self.results_text.delete('1.0', tk.END)
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        self.detail_text.delete('1.0', tk.END)
         self.filtered_jobs = []
         self.results_info_var.set("Results cleared")
 
