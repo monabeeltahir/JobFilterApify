@@ -10,6 +10,7 @@ build/
 
 # Application generated files
 job_filter_config.json
+job_applications.json
 filtered_jobs_*.json
 
 # IDE
